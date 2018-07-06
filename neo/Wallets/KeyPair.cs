@@ -34,6 +34,24 @@ namespace Neo.Wallets
 #endif
         }
 
+        /// <summary>
+        /// 使用公钥生成key pair
+        /// Add Code
+        /// </summary>
+        /// <param name="publicKey"></param>
+        public KeyPair(string publicKey)
+        {
+            if (publicKey.Length != 66)
+            {
+                throw new ArgumentException();
+            }
+            this.PrivateKey = new byte[32];
+            this.PublicKey = Cryptography.ECC.ECPoint.Parse(publicKey, Cryptography.ECC.ECCurve.Secp256r1);
+#if NET47
+            ProtectedMemory.Protect(PrivateKey, MemoryProtectionScope.SameProcess);
+#endif
+        }
+
         public IDisposable Decrypt()
         {
 #if NET47

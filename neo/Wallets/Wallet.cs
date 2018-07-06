@@ -90,6 +90,18 @@ namespace Neo.Wallets
             return FindUnspentCoins().Where(p => p.Output.AssetId.Equals(asset_id)).Sum(p => p.Output.Value);
         }
 
+        /// <summary>
+        /// 指定钱包账号可用资产
+        /// AddCode
+        /// </summary>
+        /// <param name="asset_id">资产ID</param>
+        /// <param name="address">账号</param>
+        /// <returns></returns>
+        public Fixed8 GetAvailable(UInt256 asset_id, string address)
+        {
+            return FindUnspentCoins(GetAccounts().Where(p => p.Address.Equals(address)).Select(p => p.ScriptHash).First()).Where(p => p.Output.AssetId.Equals(asset_id)).Sum(p => p.Output.Value);
+        }
+
         public BigDecimal GetAvailable(UIntBase asset_id)
         {
             if (asset_id is UInt160 asset_id_160)
@@ -98,6 +110,37 @@ namespace Neo.Wallets
                 using (ScriptBuilder sb = new ScriptBuilder())
                 {
                     foreach (UInt160 account in GetAccounts().Where(p => !p.WatchOnly).Select(p => p.ScriptHash))
+                        sb.EmitAppCall(asset_id_160, "balanceOf", account);
+                    sb.Emit(OpCode.DEPTH, OpCode.PACK);
+                    sb.EmitAppCall(asset_id_160, "decimals");
+                    script = sb.ToArray();
+                }
+                ApplicationEngine engine = ApplicationEngine.Run(script);
+                byte decimals = (byte)engine.EvaluationStack.Pop().GetBigInteger();
+                BigInteger amount = ((VMArray)engine.EvaluationStack.Pop()).Aggregate(BigInteger.Zero, (x, y) => x + y.GetBigInteger());
+                return new BigDecimal(amount, decimals);
+            }
+            else
+            {
+                return new BigDecimal(GetAvailable((UInt256)asset_id).GetData(), 8);
+            }
+        }
+
+        /// <summary>
+        /// 可用智能合约资产
+        /// 增加了一个 address 参数
+        /// </summary>
+        /// <param name="asset_id"></param>
+        /// <returns></returns>
+        public BigDecimal GetAvailable(UIntBase asset_id, string address = "")
+        {
+            if (asset_id is UInt160 asset_id_160)
+            {
+                byte[] script;
+                using (ScriptBuilder sb = new ScriptBuilder())
+                {
+                    // 增加了使用 address 查询账号条件
+                    foreach (UInt160 account in GetAccounts().Where(p => !p.WatchOnly).Where(p => (string.IsNullOrEmpty(address) || p.Address.Equals(address))).Select(p => p.ScriptHash))
                         sb.EmitAppCall(asset_id_160, "balanceOf", account);
                     sb.Emit(OpCode.DEPTH, OpCode.PACK);
                     sb.EmitAppCall(asset_id_160, "decimals");
@@ -135,6 +178,17 @@ namespace Neo.Wallets
         public IEnumerable<Coin> GetCoins()
         {
             return GetCoins(GetAccounts().Select(p => p.ScriptHash));
+        }
+
+        /// <summary>
+        /// 获取账号的币信息
+        /// AddCode
+        /// </summary>
+        /// <param name="address">账号</param>
+        /// <returns>币信息</returns>
+        public IEnumerable<Coin> GetCoins(string address)
+        {
+            return GetCoins(GetAccounts().Where(p => p.Address.Equals(address)).Select(p => p.ScriptHash));
         }
 
         public static byte[] GetPrivateKeyFromNEP2(string nep2, string passphrase, int N = 16384, int r = 8, int p = 8)
@@ -375,6 +429,11 @@ namespace Neo.Wallets
             return tx;
         }
 
+        /// <summary>
+        /// 签名
+        /// </summary>
+        /// <param name="context"></param>
+        /// <returns></returns>
         public bool Sign(ContractParametersContext context)
         {
             bool fSuccess = false;
@@ -384,6 +443,31 @@ namespace Neo.Wallets
                 if (account?.HasKey != true) continue;
                 KeyPair key = account.GetKey();
                 byte[] signature = context.Verifiable.Sign(key);
+                fSuccess |= context.AddSignature(account.Contract, key.PublicKey, signature);
+            }
+            return fSuccess;
+        }
+
+        /// <summary>
+        /// 交易签名
+        /// AddCode
+        /// </summary>
+        /// <param name="context">交易上下文</param>
+        /// <param name="privatekey">私钥</param>
+        /// <returns>结果</returns>
+        public bool Sign(ContractParametersContext context, string privatekey)
+        {
+            bool fSuccess = false;
+            foreach (UInt160 scriptHash in context.ScriptHashes)
+            {
+                WalletAccount account = GetAccount(scriptHash);
+                //if (account?.HasKey != true) continue; // 判断账号是否有nep2key 只读私有属性 只能通过构造函数赋值 所以不伪造
+                // 使用私钥生成钥匙
+                KeyPair key = new KeyPair(privatekey.HexToBytes());
+                byte[] signature = context.Verifiable.Sign(key);
+                //key.PrivateKey.ToHexString();
+                //key.PublicKey.EncodePoint(true).ToHexString();
+                //File.AppendAllText("wallet.log", $"privatekey: {key.PrivateKey.ToHexString()} \n publickey: {key.PublicKey.EncodePoint(true).ToHexString()}\n");
                 fSuccess |= context.AddSignature(account.Contract, key.PublicKey, signature);
             }
             return fSuccess;

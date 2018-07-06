@@ -20,6 +20,7 @@ namespace Neo.Implementations.Wallets.NEP6
         private string password;
         private string name;
         private Version version;
+        private readonly int WalletType;// 账号类型 同钱包文件的保存方式相关 AddCode
         public readonly ScryptParameters Scrypt;
         private readonly Dictionary<UInt160, NEP6Account> accounts;
         private readonly JObject extra;
@@ -55,6 +56,43 @@ namespace Neo.Implementations.Wallets.NEP6
                 this.extra = JObject.Null;
             }
             WalletIndexer.BalanceChanged += WalletIndexer_BalanceChanged;
+        }
+
+        /// <summary>
+        /// 使用钱包文件初始化钱包
+        /// Add Code
+        /// </summary>
+        /// <param name="path">钱包文件路径</param>
+        /// <param name="password">密码</param>
+        /// <param name="type">账号类型</param>
+        public NEP6Wallet(string path, string password, int walletType = 0)
+        {
+            this.WalletType = walletType;
+            this.path = path;
+            this.password = password;
+            // 钱包文件是否存在
+            if (!File.Exists(path))
+            {
+                throw new FileNotFoundException();
+            }
+            // 打开钱包
+            JObject wallet;
+            using (StreamReader reader = new StreamReader(path))
+            {
+                wallet = JObject.Parse(reader);
+            }
+            //Console.WriteLine($"Wallet Name: {wallet["version"].AsString()}");
+            this.name = wallet["name"]?.AsString();
+            this.version = Version.Parse(wallet["version"].AsString());
+            this.Scrypt = ScryptParameters.FromJson(wallet["scrypt"]);
+            // 把文件中的账号信息转换成 NEP6Account 并加入到 accounts  键名是  ScriptHash
+            this.accounts = ((JArray)wallet["accounts"]).Select(p => NEP6Account.fromJson(p, this)).ToDictionary(p => p.ScriptHash);
+            //foreach (UInt160 key in this.accounts.Keys)
+            //{
+            //    this.accounts[key].GetKey();
+            //}
+            this.extra = wallet["extra"];
+            WalletIndexer.RegisterAccounts(accounts.Keys);
         }
 
         private void AddAccount(NEP6Account account, bool is_import)
@@ -355,11 +393,32 @@ namespace Neo.Implementations.Wallets.NEP6
 
         public void Save()
         {
+            if (this.WalletType == 0)
+            {
+                JObject wallet = new JObject();
+                wallet["name"] = name;
+                wallet["version"] = version.ToString();
+                wallet["scrypt"] = Scrypt.ToJson();
+                wallet["accounts"] = new JArray(accounts.Values.Select(p => p.ToJson()));
+                wallet["extra"] = extra;
+                File.WriteAllText(path, wallet.ToString());
+            }else
+            {
+                save();
+            }
+        }
+
+        /// <summary>
+        /// 存储钱包信息到JSON
+        /// AddCode
+        /// </summary>
+        public void save()
+        {
             JObject wallet = new JObject();
             wallet["name"] = name;
             wallet["version"] = version.ToString();
             wallet["scrypt"] = Scrypt.ToJson();
-            wallet["accounts"] = new JArray(accounts.Values.Select(p => p.ToJson()));
+            wallet["accounts"] = new JArray(accounts.Values.Select(p => p.toJson()));
             wallet["extra"] = extra;
             File.WriteAllText(path, wallet.ToString());
         }

@@ -1,4 +1,5 @@
-﻿using Neo.Wallets;
+﻿using Neo.IO.Json;
+using Neo.Wallets;
 
 namespace Neo.Implementations.Wallets.EntityFramework
 {
@@ -16,6 +17,26 @@ namespace Neo.Implementations.Wallets.EntityFramework
         public override KeyPair GetKey()
         {
             return Key;
+        }
+
+        public override string GetPrivateKey()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public override JObject OutputJson()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public override void Print()
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public override string GetWIFKey()
+        {
+            throw new System.NotImplementedException();
         }
     }
 }
